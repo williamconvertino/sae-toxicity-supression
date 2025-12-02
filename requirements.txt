@@ -1,0 +1,9 @@
+torch>=2.1.0
+numpy>=1.26.4
+transformers>=4.57.1
+datasets>=3.1.0
+huggingface-hub>=0.19.3,<1.0
+sae-lens
+tqdm>=4.66.4
+python-dotenv>=1.0.1
+matplotlib
