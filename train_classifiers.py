@@ -426,7 +426,7 @@ def main():
     all_metrics: Dict[str, Dict[str, Dict[str, float]]] = {}
 
     max_length = 64
-    num_epochs = 5
+    num_epochs = 1
     batch_size = 32
 
     for dataset_name, loader_fn in TASKS.items():

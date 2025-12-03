@@ -7,3 +7,4 @@ sae-lens
 tqdm>=4.66.4
 python-dotenv>=1.0.1
 matplotlib
+scikit-learn

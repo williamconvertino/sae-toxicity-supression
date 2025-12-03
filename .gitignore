@@ -2,7 +2,8 @@
 nqopen_allneg/
 nqopen_onlybest/
 paradetox/
-real_toxicity
+classifier_results/
+real_toxicity/
 paradetox.tsv
 
 # Byte-compiled / optimized / DLL files
