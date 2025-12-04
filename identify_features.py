@@ -11,7 +11,7 @@ from tqdm import tqdm
 
 from util import load_model, decode_feature_tokens, load_paradetox, load_nqopen, load_real_toxicity
 
-DEVICE = torch.device("cuda")
+DEVICE = torch.device("cuda:2")
 
 def compute_mean_sae_activation(model, sae, dataset, batch_size=8, max_length=64):
 
@@ -114,18 +114,21 @@ def analyze_features(analysis_name, model, sae, positive_dataset, negative_datas
 
 def main():
 
-    print("\n=== Running paradetox ===")
+    # Load model first
+    print("\n=== Loading model and SAE ===")
     model, sae = load_model()
-    toxic_dataset, neutral_dataset = load_paradetox()
-    print(f"Loaded {len(toxic_dataset)} toxic and {len(neutral_dataset)} neutral examples.")
 
-    analyze_features(
-        analysis_name="paradetox",
-        model=model,
-        sae=sae,
-        positive_dataset=toxic_dataset,
-        negative_dataset=neutral_dataset,
-    )
+    # Skip paradetox if file doesn't exist (not required for Project 2)
+    # print("\n=== Running paradetox ===")
+    # toxic_dataset, neutral_dataset = load_paradetox()
+    # print(f"Loaded {len(toxic_dataset)} toxic and {len(neutral_dataset)} neutral examples.")
+    # analyze_features(
+    #     analysis_name="paradetox",
+    #     model=model,
+    #     sae=sae,
+    #     positive_dataset=toxic_dataset,
+    #     negative_dataset=neutral_dataset,
+    # )
 
     print("\n=== Running NQOpen (only best answer) ===")
     nq_pos, nq_neg = load_nqopen(only_best=True)

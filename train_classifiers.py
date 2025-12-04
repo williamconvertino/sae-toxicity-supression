@@ -18,7 +18,7 @@ from util import (
     load_real_toxicity,
 )
 
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+DEVICE = torch.device("cuda:2" if torch.cuda.is_available() else "cpu")
 
 class LabeledTextDataset(Dataset):
     """

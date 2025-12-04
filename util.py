@@ -10,17 +10,22 @@ from tqdm import tqdm
 import os
 from datasets import load_dataset
 
-def load_model():
-
+def load_model(device: str = "cuda:2"):
+    """
+    Load Gemma-2B-It model and its pretrained SAE.
+    
+    Args:
+        device: CUDA device to use (default: cuda:1)
+    """
     sae = SAE.from_pretrained(
         release="gemma-2b-it-res-jb",
         sae_id="blocks.12.hook_resid_post",
-        device="cuda"
+        device=device
     )
 
     model = HookedTransformer.from_pretrained(
         "gemma-2b-it",
-        device="cuda",
+        device=device,
         dtype="float32"
     )
 
