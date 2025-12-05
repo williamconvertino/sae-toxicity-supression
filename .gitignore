@@ -1,10 +1,11 @@
 # Data files
-nqopen_allneg/
-nqopen_onlybest/
-paradetox/
-classifier_results/
-real_toxicity/
-paradetox.tsv
+datasets/
+activations/
+figures/
+dev/
+logs/
+env.sh
+.env
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
