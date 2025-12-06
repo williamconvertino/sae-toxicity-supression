@@ -25,6 +25,16 @@ PERSPECTIVE_API_KEY = os.getenv("PERSPECTIVE_API_KEY")
 if PERSPECTIVE_API_KEY is None:
     raise ValueError("PERSPECTIVE_API_KEY not found in .env file")
 
+def format_gemma_prompt(question: str) -> str:
+    return (
+        "<start_of_turn>user\n"
+        f"{question}\n"
+        "<end_of_turn>\n"
+        "<start_of_turn>model\n"
+    )
+
+
+
 PERSPECTIVE_CLIENT = discovery.build(
     "commentanalyzer",
     "v1alpha1",
@@ -42,8 +52,8 @@ def batch_max_activation(model, sae, tokens, hook_name, layer, feature_idx):
         stop_at_layer=layer + 1,
         names_filter=[hook_name],
     )
-    sae_in = cache[hook_name]                    # [B, T, d_model]
-    sae_out = sae.encode(sae_in)                 # [B, T, d_sae]
+    sae_in = cache[hook_name]                
+    sae_out = sae.encode(sae_in)                 
     sae_out = sae_out.reshape(-1, sae_out.size(-1))
     return sae_out[:, feature_idx].max().item()
 
@@ -76,13 +86,11 @@ def generate_with_steering_batch(
     hook_name = sae.cfg.metadata.hook_name
     layer = int(re.search(r"\.(\d+)\.", hook_name).group(1))
 
-    # ---- Tokenize ----
     tokens = model.to_tokens(
         prompts,
         prepend_bos=sae.cfg.metadata.prepend_bos
     ).to(DEVICE)
 
-    # ---- Baseline generation: no hook applied ----
     if baseline_mode:
         out_tokens = model.generate(
             tokens,
@@ -90,25 +98,21 @@ def generate_with_steering_batch(
             temperature=0.7,
             top_p=0.9,
             stop_at_eos=True,
-            prepend_bos=sae.cfg.metadata.prepend_bos,
         )
         decoded = [model.tokenizer.decode(o) for o in out_tokens]
-        return decoded, 0.0   # max_act is meaningless here
+        return decoded, 0.0   
 
-    # ---- Build a combined steering vector ----
     indices = [i for (i, s) in feature_indices]
     signs   = torch.tensor([s for (i, s) in feature_indices], device=DEVICE).float()
 
-    W = sae.W_dec[indices].to(DEVICE)           # [k, d_model]
-    W = W * signs.unsqueeze(1)                 # apply sign per feature
+    W = sae.W_dec[indices].to(DEVICE)       
+    W = W * signs.unsqueeze(1)            
 
-    steering_vector = W.sum(dim=0)             # combine
+    steering_vector = W.sum(dim=0)         
     steering_vector = steering_vector / steering_vector.norm()
     steering_vector = steering_vector.unsqueeze(0).unsqueeze(0)
 
-    # ---- Compute max activation (scalar) ----
     if use_global_max_act:
-        # Get max activation OVER ALL selected features
         max_acts = []
         for f in feature_indices:
             max_acts.append(batch_max_activation(model, sae, tokens, hook_name, layer, f))
@@ -116,7 +120,6 @@ def generate_with_steering_batch(
     else:
         raise NotImplementedError("Only global max activation supported for now.")
 
-    # ---- Build the steering hook ----
     hook_fn = partial(
         steering_hook_fn,
         steering_vector=steering_vector,
@@ -124,7 +127,6 @@ def generate_with_steering_batch(
         max_act=max_act,
     )
 
-    # ---- Generate text with steering ----
     with model.hooks(fwd_hooks=[(hook_name, hook_fn)]):
         out_tokens = model.generate(
             tokens,
@@ -132,7 +134,7 @@ def generate_with_steering_batch(
             temperature=0.7,
             top_p=0.9,
             stop_at_eos=True,
-            prepend_bos=sae.cfg.metadata.prepend_bos,
+            # prepend_bos=sae.cfg.metadata.prepend_bos,
         )
 
     decoded = [model.tokenizer.decode(o) for o in out_tokens]
@@ -150,15 +152,15 @@ def save_sample_generations_toxicity(
     generations,
 ):
 
-    path.parent.mkdir(parents=True, exist_ok=True)
+    # path.parent.mkdir(parents=True, exist_ok=True)
 
     with path.open("w", encoding="utf-8") as f:
-        f.write(f"# Experiment: {experiment_name}\n")
-        f.write(f"# Task: toxicity\n")
-        f.write(f"# k_type: {k_type}\n")
-        f.write(f"# k: {k}\n")
-        f.write(f"# alpha: {alpha}\n")
-        f.write(f"# threshold: {threshold}\n")
+        f.write(f"Experiment: {experiment_name}\n")
+        f.write(f"Task: toxicity\n")
+        f.write(f"k_type: {k_type}\n")
+        f.write(f"k: {k}\n")
+        f.write(f"alpha: {alpha}\n")
+        f.write(f"threshold: {threshold}\n")
         f.write("\n")
 
         for i, (p, g) in enumerate(zip(prompts, generations)):
@@ -184,11 +186,11 @@ def save_sample_generations_hallucination(
     path.parent.mkdir(parents=True, exist_ok=True)
 
     with path.open("w", encoding="utf-8") as f:
-        f.write(f"# Experiment: {experiment_name}\n")
-        f.write(f"# Task: hallucination (NQOpen)\n")
-        f.write(f"# k_type: {k_type}\n")
-        f.write(f"# k: {k}\n")
-        f.write(f"# alpha: {alpha}\n")
+        f.write(f"Experiment: {experiment_name}\n")
+        f.write(f"Task: hallucination (NQOpen)\n")
+        f.write(f"k_type: {k_type}\n")
+        f.write(f"k: {k}\n")
+        f.write(f"alpha: {alpha}\n")
         f.write("\n")
 
         for i, (q, best, correct, gen) in enumerate(
@@ -206,7 +208,7 @@ def save_sample_generations_hallucination(
             f.write("-" * 80 + "\n\n")
 
 
-def get_toxicity_score(text, max_retries=3, delay=0.3, timeout=1.0):
+def get_toxicity_score(text, max_retries=3, delay=3.0, timeout=3.0):
 
     analyze_request = {
         "comment": {"text": text},
@@ -223,7 +225,6 @@ def get_toxicity_score(text, max_retries=3, delay=0.3, timeout=1.0):
                 .execute()
             )
 
-            # Extract TOXICITY summaryScore
             score = (
                 response["attributeScores"]["TOXICITY"]["summaryScore"]["value"]
             )
@@ -238,7 +239,7 @@ def get_toxicity_score(text, max_retries=3, delay=0.3, timeout=1.0):
 
     return 0.0
 
-def load_real_toxicity_prompts(threshold, max_samples=4_000):
+def load_real_toxicity_prompts(threshold, max_samples=1_000):
 
     ds = load_dataset("allenai/real-toxicity-prompts", split="train")
 
@@ -259,7 +260,7 @@ def load_real_toxicity_prompts(threshold, max_samples=4_000):
             continue
 
         if response["toxicity"] is not None and response["toxicity"] >= threshold:
-            prompts.append(prompt["text"])
+            prompts.append(format_gemma_prompt(prompt["text"]))
     assert len(prompts) > 0, "Found no valid prompts"
     return prompts
 
@@ -275,7 +276,6 @@ def run_toxic_analysis(
     batch_size=8,
 ):
     
-    # Extract threshold from experiment name
     try:
         threshold = float(experiment_name.split("_")[-1])
         assert threshold is not None, f"Got None threshold from {experiment_name}"
@@ -290,13 +290,13 @@ def run_toxic_analysis(
     result_path = save_dir / f"alpha={alpha}.json"
     samples_path = save_dir / f"samples_alpha={alpha}.txt"
 
-    # If we’ve already computed the toxicity, just ensure samples exist
     if result_path.exists():
         with open(result_path, "r") as f:
             avg_tox = json.load(f)["avg_toxicity"]
 
         if not samples_path.exists():
-            # Generate only a small number of samples (no need to redo full eval)
+            samples_path.parent.mkdir(parents=True, exist_ok=True)
+ 
             sample_prompts = load_real_toxicity_prompts(threshold, max_samples=N_SAMPLE_GENERATIONS)
             sample_generations, _ = generate_with_steering_batch(
                 model=model,
@@ -320,7 +320,8 @@ def run_toxic_analysis(
 
         return avg_tox
 
-    # ---- Load full dataset for evaluation ----
+    result_path.parent.mkdir(parents=True, exist_ok=True)
+
     prompts = load_real_toxicity_prompts(threshold)
     print(f"Loaded {len(prompts)} prompts from {experiment_name}")
 
@@ -329,7 +330,6 @@ def run_toxic_analysis(
             json.dump({"avg_toxicity": 0.0}, f, indent=2)
         return 0.0
 
-    # ---- Batch generation for toxicity stats ----
     toxicity_scores = []
 
     for i in tqdm(range(0, len(prompts), batch_size),
@@ -355,8 +355,8 @@ def run_toxic_analysis(
     with open(result_path, "w") as f:
         json.dump({"avg_toxicity": avg_tox}, f, indent=2)
 
-    # ---- Save a few qualitative examples (same config) ----
     if not samples_path.exists():
+        samples_path.parent.mkdir(parents=True, exist_ok=True)
         sample_prompts = prompts[:N_SAMPLE_GENERATIONS]
         sample_generations, _ = generate_with_steering_batch(
             model=model,
@@ -448,6 +448,7 @@ def load_nqopen_questions(max_samples=4_000):
 
     for row in ds:
         q = row.get("question", None)
+        q = format_gemma_prompt(q)
         best = row.get("best_answer", None)
         correct_str = row.get("correct_answers", "")
 
@@ -491,12 +492,10 @@ def run_hallucination_analysis(
     result_path = save_dir / f"alpha={alpha}.json"
     samples_path = save_dir / f"samples_alpha={alpha}.txt"
 
-    # Load NQOpen once per call
     questions, best_answers, correct_lists = load_nqopen_questions()
     n_total = len(questions)
     print(f"Loaded {n_total} NQOpen questions for {experiment_name}")
 
-    # If metrics already exist, only ensure samples exist
     if result_path.exists():
         with open(result_path, "r") as f:
             metrics = json.load(f)
@@ -530,7 +529,6 @@ def run_hallucination_analysis(
 
         return metrics
 
-    # ---- Full evaluation loop ----
     n_best_correct = 0
     n_any_correct = 0
 
@@ -583,7 +581,6 @@ def run_hallucination_analysis(
     with open(result_path, "w") as f:
         json.dump(metrics, f, indent=2)
 
-    # ---- Save a few qualitative examples ----
     if not samples_path.exists():
         sample_q = questions[:N_SAMPLE_GENERATIONS]
         sample_best = best_answers[:N_SAMPLE_GENERATIONS]
@@ -623,7 +620,6 @@ def plot_hallucination_curves(experiment_name, k_type, results):
     alphas = ["baseline", 0.5, 1.0, 3.0]
     metrics = ["best_accuracy", "any_accuracy"]
 
-    # ---- accuracy vs k (for each alpha, each metric) ----
     for metric in metrics:
         for alpha in alphas:
             plt.figure(figsize=(8, 5))
@@ -664,28 +660,29 @@ def load_or_generate_baseline_generations(
     prompts,
     save_dir,
     max_new_tokens=80,
+    batch_size=8,
 ):
-    """
-    Generates baseline outputs ONCE per experiment.
-    Reuses cached file for ALL k/k_type/alpha.
-    """
+
+
+    save_dir.mkdir(parents=True, exist_ok=True)
 
     baseline_path = save_dir / "baseline.json"
     baseline_samples_path = save_dir / "baseline_samples.txt"
 
-    # --- Use cached baseline if available ---
     if baseline_path.exists() and baseline_samples_path.exists():
         with open(baseline_path, "r") as f:
             baseline_data = json.load(f)
         return baseline_data
 
-    # ---- Run baseline model (NO steering) ----
     print(f"[BASELINE] Generating baseline outputs for {experiment_name}...")
 
-    # No steering hook → regular generation
-    outputs = []
-    for i in tqdm(range(0, len(prompts), 8), desc="Baseline generation"):
-        batch = prompts[i:i+8]
+    toxicity_scores = []
+    sample_prompts = prompts[:N_SAMPLE_GENERATIONS]
+    sample_generations = []
+
+    for i in tqdm(range(0, len(prompts), batch_size), desc="Baseline generation"):
+        batch = prompts[i:i+batch_size]
+
         tokens = model.to_tokens(
             batch,
             prepend_bos=sae.cfg.metadata.prepend_bos
@@ -697,30 +694,22 @@ def load_or_generate_baseline_generations(
             temperature=0.7,
             top_p=0.9,
             stop_at_eos=True,
-            prepend_bos=sae.cfg.metadata.prepend_bos,
         )
 
-        outputs.extend([model.tokenizer.decode(o) for o in out_tokens])
+        generations = [model.tokenizer.decode(o) for o in out_tokens]
 
-    # ---- Compute metrics for toxicity or hallucination depending on dataset ----
-    if experiment_name.startswith("real_toxicity_"):
-        scores = [get_toxicity_score(text) for text in outputs]
-        avg_score = float(sum(scores) / len(scores))
-        metrics = {"avg_toxicity": avg_score}
+        for text in generations:
+            toxicity_scores.append(get_toxicity_score(text))
 
-    elif experiment_name.startswith("nqopen_"):
-        raise ValueError("Use the hallucination baseline helper for nqopen")  # See below
+        if len(sample_generations) < N_SAMPLE_GENERATIONS:
+            take = min(N_SAMPLE_GENERATIONS - len(sample_generations), len(generations))
+            sample_generations.extend(generations[:take])
 
-    else:
-        raise ValueError(f"Unknown task type for baseline generation: {experiment_name}")
+    avg_score = float(sum(toxicity_scores) / len(toxicity_scores))
+    metrics = {"avg_toxicity": avg_score}
 
-    # ---- Save baseline metrics ----
     with open(baseline_path, "w") as f:
         json.dump(metrics, f, indent=2)
-
-    # ---- Also save a small sample file ----
-    sample_prompts = prompts[:N_SAMPLE_GENERATIONS]
-    sample_generations = outputs[:N_SAMPLE_GENERATIONS]
 
     with open(baseline_samples_path, "w", encoding="utf-8") as f:
         for i, (p, g) in enumerate(zip(sample_prompts, sample_generations)):
@@ -743,10 +732,10 @@ def load_or_generate_hallucination_baseline(
     save_dir,
     max_new_tokens=80,
 ):
+    save_dir.mkdir(parents=True, exist_ok=True)
     baseline_path = save_dir / "baseline.json"
     baseline_samples_path = save_dir / "baseline_samples.txt"
 
-    # --- Cached baseline? ---
     if baseline_path.exists() and baseline_samples_path.exists():
         with open(baseline_path, "r") as f:
             return json.load(f)
@@ -766,13 +755,12 @@ def load_or_generate_hallucination_baseline(
             max_new_tokens=max_new_tokens,
             temperature=0.7,
             top_p=0.9,
-            stop_at_eos=True,
-            prepend_bos=sae.cfg.metadata.prepend_bos,
+            stop_at_eos=True
+            # prepend_bos=sae.cfg.metadata.prepend_bos,
         )
 
         outputs.extend([model.tokenizer.decode(o) for o in out_tokens])
 
-    # ---- Compute metrics ----
     n_total = len(questions)
     n_best_correct = 0
     n_any_correct = 0
@@ -797,7 +785,6 @@ def load_or_generate_hallucination_baseline(
     with open(baseline_path, "w") as f:
         json.dump(metrics, f, indent=2)
 
-    # ---- Save example generations ----
     with open(baseline_samples_path, "w", encoding="utf-8") as f:
         for i, (q, g) in enumerate(
             zip(
@@ -846,8 +833,8 @@ def run_steering_analysis(
     sorted_pos = diff.argsort(descending=True)
     sorted_neg = diff.argsort(descending=False)
 
-    ks = [1, 5, 10, "all"]
-    alphas = [0.5, 1.0, 3.0]
+    ks = [5]
+    alphas = [1.0, 5.0]
     k_types = ["positive", "negative", "both"]
 
     is_toxicity = experiment_name.startswith("real_toxicity_")
@@ -855,9 +842,6 @@ def run_steering_analysis(
 
     all_results = {}
 
-    # -------------------------------------------------------------
-    # 🟦 1) Compute BASELINE once (no steering)
-    # -------------------------------------------------------------
     print("Computing baseline once ...")
 
     if is_toxicity:
@@ -865,6 +849,7 @@ def run_steering_analysis(
         prompts = load_real_toxicity_prompts(threshold)
 
         baseline_save_dir = Path(f"figures/steering_toxicity/{experiment_name}/baseline")
+        
         baseline = load_or_generate_baseline_generations(
             experiment_name,
             model,

@@ -8,12 +8,12 @@ from datasets import load_dataset
 EXPERIMENT_DATASET_DICT = {
     # "paradetox": lambda: load_paradetox(), # Dataset does not perform very well
     
-    "real_toxicity_0.5": lambda: load_real_toxicity(toxicity_threshold=0.5),
-    "real_toxicity_0.7": lambda: load_real_toxicity(toxicity_threshold=0.7),
-    "real_toxicity_0.9": lambda: load_real_toxicity(toxicity_threshold=0.9),
+    # "real_toxicity_0.5": lambda: load_real_toxicity(toxicity_threshold=0.5),
+    # "real_toxicity_0.7": lambda: load_real_toxicity(toxicity_threshold=0.7),
+    # "real_toxicity_0.9": lambda: load_real_toxicity(toxicity_threshold=0.9),
     
     # "nqopen_best": lambda: load_nqopen(only_best=True),
-    # "nqopen_all": lambda: load_nqopen(only_best=False),
+    "nqopen_all": lambda: load_nqopen(only_best=False),
 }
 
 HF_CACHE_DIR = Path("../cached")
